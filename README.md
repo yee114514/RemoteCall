@@ -61,10 +61,10 @@ RemoteCall/
 ## 3. 构建、测试与安装
 
 ```powershell
-# 构建
+# 构建（Release 会同时生成插件包 src\RemoteCall\cipx\RemoteCall.cipx + checksums.md）
 dotnet build RemoteCall.sln -c Release
 
-# 冒烟测试（18 项：密码/默认密码/局域网地址过滤/会话/限流/消息/改名/完成/管理页/HTTP 协议/存储裁剪）
+# 冒烟测试（21 项：密码/默认密码/局域网地址过滤/设备名识别/会话/限流/消息/改名/完成/管理页/HTTP 协议/存储裁剪）
 dotnet run --project tests\RemoteCall.SmokeTests -c Release
 
 # 安装到 ClassIsland（构建 + 复制文件）
@@ -75,6 +75,17 @@ pwsh -File scripts\install.ps1 -AddComponent
 ```
 
 安装后**重启 ClassIsland**，插件才会加载。
+
+### 打包与发布
+
+- `dotnet build src\RemoteCall\RemoteCall.csproj -c Release` 会调用 SDK 的 `CreateCipx` 目标，输出
+  `src\RemoteCall\cipx\RemoteCall.cipx`（zip 格式，含 `manifest.yml` / `RemoteCall.dll` / `icon.png` / `README.md`）和
+  `cipx\checksums.md`（`<!-- CLASSISLAND_PKG_MD5 {...} -->`）。
+- 发布到 GitHub Release：tag 必须严格是 `a.b.c.d`（如 `1.0.0.0`），上传 `RemoteCall.cipx`，
+  并把 `checksums.md` 里的那行 MD5 注释放进 Release 说明（索引生成器据此校验）。
+- 上架插件市场：把 [`publish/remote.call.yml`](publish/remote.call.yml) 更名为 `remote.call.yml`，
+  提交到 [ClassIsland/PluginIndex](https://github.com/ClassIsland/PluginIndex) 的 `index/plugins-v2/` 并发起 PR。
+  详见官方文档 <https://docs.classisland.tech/dev/plugins/publishing.html>。
 
 ---
 

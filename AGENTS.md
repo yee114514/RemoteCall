@@ -12,6 +12,7 @@
 | 构建 | `dotnet build RemoteCall.sln -c Release` |
 | 冒烟测试（必须全绿） | `dotnet run --project tests/RemoteCall.SmokeTests -c Release` |
 | 安装到 ClassIsland | `pwsh -File scripts/install.ps1 -StopClassIsland` |
+| 生成插件包 `.cipx` | `dotnet build src/RemoteCall/RemoteCall.csproj -c Release` → `src/RemoteCall/cipx/RemoteCall.cipx` |
 | 安装并顺手把组件放进主界面 | `pwsh -File scripts/install.ps1 -StopClassIsland -AddComponent` |
 | 看运行期状态 | `curl http://127.0.0.1:8199/api/state` |
 
@@ -157,3 +158,22 @@ docs/*.png                   验证截图（README 引用）
 - 不要用 `HttpListener`、ASP.NET Core、WebSocket 依赖（当前只有轮询与纯 HTTP）。
 - 不要给网页引外部 CDN / 字体 / 统计脚本 —— 局域网设备可能没有外网。
 - 不要把 `-1 = 不限制` 只改在 UI 上（三层都要改，否则会偷偷裁剪或偷偷过期）。
+
+---
+
+## 9. 发布流程（只发 ClassIsland 2.x，**不需要兼容 1.x**）
+
+1. **对齐版本号**（三处必须一致，格式 `a.b.c.d`）：`src/RemoteCall/manifest.yml` 的 `version`、
+   `src/RemoteCall/Plugin/PackageInfo.cs` 的 `Version`、`publish/remote.call.yml` 的 `version`。
+2. **打插件包**：`dotnet build src/RemoteCall/RemoteCall.csproj -c Release`
+   → `src/RemoteCall/cipx/RemoteCall.cipx` + `cipx/checksums.md`（SDK 的 `CreateCipx` 目标，`cipx/` 已被 .gitignore）。
+   自查：`unzip -l` 里**不应**出现 `ClassIsland.*.dll` / `Avalonia*.dll`。
+3. **提交 + 打 tag**：tag 必须严格是 `a.b.c.d`（不能带 `v` 前缀，否则索引生成器识别不了版本）。
+   `git tag 1.0.0.0 && git push origin 1.0.0.0`（本机 HTTPS 被阻断，origin 走 `ssh://…:443`）。
+4. **GitHub Release**：tag 选 `1.0.0.0`，上传 `RemoteCall.cipx`（文件名需与 `publish/remote.call.yml` 的
+   `artifactName` 一致），Release 说明末尾必须带 `cipx/checksums.md` 里那行
+   `<!-- CLASSISLAND_PKG_MD5 {"RemoteCall.cipx":"…"} -->`。
+5. **上架插件市场**：`publish/remote.call.yml` 改名为 `remote.call.yml`，放到
+   [ClassIsland/PluginIndex](https://github.com/ClassIsland/PluginIndex) 的 `index/plugins-v2/`，提 PR。
+   **只放 2.x 的 `plugins-v2`，不要动 1.x 的 `index/plugins`。**
+6. 发布说明模板见 `publish/release-notes-<version>.md`；升版本时新建一份并重新算 MD5。

@@ -9,8 +9,9 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <AssemblyName>RemoteCall</AssemblyName>
     <RootNamespace>RemoteCall</RootNamespace>
-    <!-- 不生成 .cipx 包，安装走脚本复制目录 -->
-    <CreateCipx>false</CreateCipx>
+    <!-- Release 构建时顺便生成 .cipx 插件包（输出到 src/RemoteCall/cipx/，并生成 checksums.md） -->
+    <CreateCipx Condition="'$(Configuration)' == 'Release'">true</CreateCipx>
+    <GenerateHashSummary>true</GenerateHashSummary>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
