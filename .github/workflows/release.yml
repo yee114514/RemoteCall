@@ -1,0 +1,77 @@
+name: release
+
+# tag 必须是严格的 a.b.c.d（如 1.0.0.0），否则不会触发，插件索引也识别不了
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build plugin package (.cipx)
+        run: dotnet build src/RemoteCall/RemoteCall.csproj -c Release
+
+      - name: Compose release body (with MD5 of the built package)
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $notes = "publish/release-notes-$tag.md"
+          if (-not (Test-Path $notes)) {
+            throw "缺少发布说明 $notes（请先创建 publish/release-notes-$tag.md）"
+          }
+
+          $cipx = "src/RemoteCall/cipx/RemoteCall.cipx"
+          if (-not (Test-Path $cipx)) {
+            throw "没有生成插件包 $cipx"
+          }
+
+          $body = Get-Content $notes -Raw -Encoding utf8
+          # 去掉本地预填的 MD5，换成 CI 实际产物的
+          $body = [regex]::Replace($body, '(?s)<!-- CLASSISLAND_PKG_MD5 .*? -->\s*$', '')
+
+          $md5 = (Get-FileHash $cipx -Algorithm MD5).Hash
+          $json = '{"RemoteCall.cipx":"' + $md5 + '"}'
+          $body = $body.TrimEnd() + "`n`n<!-- CLASSISLAND_PKG_MD5 $json -->`n"
+
+          Set-Content -Path release-body.md -Value $body -Encoding utf8NoBOM
+          Write-Host "MD5 = $md5"
+
+      - name: Verify package contents
+        shell: pwsh
+        run: |
+          $cipx = "src/RemoteCall/cipx/RemoteCall.cipx"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $cipx))
+          try {
+            $names = $zip.Entries | ForEach-Object { $_.FullName }
+            $names | ForEach-Object { Write-Host "  $_" }
+            if (-not ($names -contains "manifest.yml")) { throw "包内缺少 manifest.yml" }
+            if (-not ($names -contains "RemoteCall.dll")) { throw "包内缺少 RemoteCall.dll" }
+            $bad = $names | Where-Object { $_ -match '^(ClassIsland|Avalonia|FluentAvalonia).*\.dll$' }
+            if ($bad) { throw "包内不应包含宿主程序集：$($bad -join ', ')" }
+          }
+          finally {
+            $zip.Dispose()
+          }
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 远程消息 ${{ github.ref_name }}
+          body_path: release-body.md
+          files: src/RemoteCall/cipx/RemoteCall.cipx
+          fail_on_unmatched_files: true
