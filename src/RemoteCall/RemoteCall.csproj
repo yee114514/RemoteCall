@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- 插件由 ClassIsland 通过 AssemblyLoadContext 动态加载 -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <AssemblyName>RemoteCall</AssemblyName>
+    <RootNamespace>RemoteCall</RootNamespace>
+    <!-- 不生成 .cipx 包，安装走脚本复制目录 -->
+    <CreateCipx>false</CreateCipx>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ExcludeAssets=runtime/native：绝不把 ClassIsland.*/Avalonia 复制进插件目录，运行期从宿主解析 -->
+    <PackageReference Include="ClassIsland.PluginSdk" Version="2.1.0.1">
+      <ExcludeAssets>runtime; native</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="manifest.yml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="README.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="icon.png" Condition="Exists('icon.png')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Core\Web\**\*" />
+  </ItemGroup>
+
+</Project>

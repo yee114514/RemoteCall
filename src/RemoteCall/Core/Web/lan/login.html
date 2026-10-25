@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111318">
+  <title>远程消息 · 登录</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <div class="brand">
+      <div class="brand-icon">💬</div>
+      <h1>远程消息</h1>
+      <p class="muted">登录后可以向本机 ClassIsland 发送消息</p>
+    </div>
+
+    <form id="login-form">
+      <label class="field">
+        <span>访问密码</span>
+        <input id="password" type="password" name="password" autocomplete="current-password"
+               inputmode="text" placeholder="请输入访问密码" maxlength="64" required>
+      </label>
+      <label class="checkbox">
+        <input id="remember" type="checkbox" checked>
+        <span>记住登录状态</span>
+      </label>
+      <button id="submit" class="primary" type="submit">登录</button>
+      <p id="error" class="error" hidden></p>
+    </form>
+
+    <p class="hint muted">忘记密码？请在运行 ClassIsland 的电脑上打开「本机管理页」重置。</p>
+  </main>
+
+  <script>
+    (function () {
+      var form = document.getElementById('login-form');
+      var password = document.getElementById('password');
+      var remember = document.getElementById('remember');
+      var submit = document.getElementById('submit');
+      var errorBox = document.getElementById('error');
+
+      function showError(message) {
+        errorBox.textContent = message;
+        errorBox.hidden = false;
+      }
+
+      function setBusy(busy) {
+        submit.disabled = busy;
+        submit.textContent = busy ? '登录中…' : '登录';
+      }
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        errorBox.hidden = true;
+        var value = password.value;
+        if (!value) {
+          showError('请输入访问密码。');
+          return;
+        }
+        setBusy(true);
+        fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: value, remember: remember.checked })
+        }).then(function (response) {
+          return response.json().catch(function () { return {}; }).then(function (data) {
+            return { status: response.status, data: data };
+          });
+        }).then(function (result) {
+          setBusy(false);
+          if (result.status === 200) {
+            location.replace('/');
+            return;
+          }
+          showError(result.data && result.data.message ? result.data.message : '登录失败。');
+          password.select();
+        }).catch(function () {
+          setBusy(false);
+          showError('无法连接到服务，请确认电脑上的 ClassIsland 正在运行。');
+        });
+      });
+
+      password.focus();
+    })();
+  </script>
+</body>
+</html>

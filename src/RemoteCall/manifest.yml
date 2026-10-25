@@ -1,0 +1,11 @@
+# RemoteCall 插件清单
+id: remote.call
+name: 远程消息
+description: 局域网内其他设备通过网页向 ClassIsland 发送消息，并在主界面以组件形式滚动展示。
+entranceAssembly: "RemoteCall.dll"
+url: https://github.com/
+version: 1.0.0.0
+apiVersion: 2.1.0.0
+author: RemoteCall
+icon: icon.png
+readme: README.md

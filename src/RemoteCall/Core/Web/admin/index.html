@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>远程消息 · 本机管理</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="admin-body">
+  <header class="admin-header">
+    <div>
+      <h1>远程消息 · 本机管理</h1>
+      <p class="sub muted">仅本机可访问（127.0.0.1）。管理历史消息、设备与访问密码。</p>
+    </div>
+    <div class="header-actions">
+      <button id="selftest-btn" type="button">插入测试消息</button>
+      <button id="restart-btn" type="button">重启监听</button>
+      <button id="refresh-btn" class="primary" type="button">刷新</button>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <section class="panel">
+      <h2>服务状态</h2>
+      <div id="status-grid" class="status-grid"></div>
+    </section>
+
+    <section class="panel">
+      <h2>访问密码</h2>
+      <p id="password-hint" class="muted"></p>
+      <div class="row">
+        <input id="new-password" type="text" placeholder="输入新密码（4~64 个字符）" maxlength="64">
+        <button id="set-password-btn" class="primary" type="button">设置密码</button>
+        <button id="generate-password-btn" type="button">随机生成</button>
+      </div>
+      <p class="hint muted">修改密码后，所有已登录的设备都需要重新登录。</p>
+    </section>
+
+    <section class="panel">
+      <h2>设置</h2>
+      <div class="form-grid">
+        <label class="switch-row">
+          <span>开启局域网网页</span>
+          <input id="lan-enabled" type="checkbox">
+        </label>
+        <label>
+          <span>局域网端口</span>
+          <input id="lan-port" type="number" min="1" max="65535">
+        </label>
+        <label>
+          <span>本机管理端口</span>
+          <input id="admin-port" type="number" min="1" max="65535">
+        </label>
+        <label>
+          <span>记住登录天数（-1 = 不限制）</span>
+          <input id="session-days" type="number" min="-1" max="365">
+        </label>
+        <label>
+          <span>历史消息保留条数（-1 = 不限制）</span>
+          <input id="retention" type="number" min="-1" max="10000">
+        </label>
+        <label class="switch-row">
+          <span>新消息提醒</span>
+          <input id="notif-enabled" type="checkbox">
+        </label>
+        <label>
+          <span>提醒遮罩时长（秒）</span>
+          <input id="notif-mask" type="number" min="1" max="60" step="0.5">
+        </label>
+        <label>
+          <span>提醒正文时长（秒）</span>
+          <input id="notif-overlay" type="number" min="1" max="180" step="0.5">
+        </label>
+        <label class="switch-row">
+          <span>提醒时朗读内容</span>
+          <input id="notif-speech" type="checkbox">
+        </label>
+      </div>
+      <div class="row">
+        <button id="save-settings-btn" class="primary" type="button">保存设置</button>
+        <span id="settings-hint" class="hint muted"></span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>历史消息</h2>
+        <div class="row-inline">
+          <select id="message-filter">
+            <option value="all">全部</option>
+            <option value="pending">未完成</option>
+            <option value="done">已完成</option>
+          </select>
+          <button id="clear-done-btn" type="button">清空已完成</button>
+          <button id="clear-all-btn" type="button">清空全部</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>时间</th><th>设备</th><th>IP</th><th>内容</th><th>状态</th><th>操作</th></tr>
+          </thead>
+          <tbody id="message-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>设备</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>设备名</th><th>设备标识</th><th>最后 IP</th><th>最后活跃</th><th>操作</th></tr>
+          </thead>
+          <tbody id="device-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>运行日志</h2>
+      <pre id="log-list" class="logs"></pre>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>

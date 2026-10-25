@@ -1,0 +1,26 @@
+# ---- .NET 构建产物 ----
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# ---- 插件打包产物 ----
+*.cipx
+cipx/
+
+# ---- 测试 / 覆盖率 ----
+TestResults/
+*.trx
+*.coverage
+
+# ---- 调试与临时文件 ----
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+
+# ---- 本地配置（可能含个人路径/密钥） ----
+launchSettings.local.json
+*.local.json
