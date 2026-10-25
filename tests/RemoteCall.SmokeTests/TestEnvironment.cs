@@ -92,9 +92,9 @@ internal sealed class TestEnvironment : IAsyncDisposable
         return cookie;
     }
 
-    public Task<(int Status, string Body, HttpResponseMessage Response)> LanAsync(string method, string path, string? json = null, string? cookie = null)
+    public Task<(int Status, string Body, HttpResponseMessage Response)> LanAsync(string method, string path, string? json = null, string? cookie = null, string? userAgent = null)
     {
-        return RequestAsync(LanServer.BoundPort, method, path, json, cookie ?? Cookie);
+        return RequestAsync(LanServer.BoundPort, method, path, json, cookie ?? Cookie, userAgent);
     }
 
     public Task<(int Status, string Body, HttpResponseMessage Response)> LanAnonymousAsync(string method, string path, string? json = null)
@@ -107,7 +107,7 @@ internal sealed class TestEnvironment : IAsyncDisposable
         return RequestAsync(AdminServer.BoundPort, method, path, json, cookie: null);
     }
 
-    public async Task<(int Status, string Body, HttpResponseMessage Response)> RequestAsync(int port, string method, string path, string? json, string? cookie)
+    public async Task<(int Status, string Body, HttpResponseMessage Response)> RequestAsync(int port, string method, string path, string? json, string? cookie, string? userAgent = null)
     {
         using var request = new HttpRequestMessage(new HttpMethod(method), $"http://127.0.0.1:{port}{path}");
         if (json != null)
@@ -118,6 +118,11 @@ internal sealed class TestEnvironment : IAsyncDisposable
         if (!string.IsNullOrEmpty(cookie))
         {
             request.Headers.TryAddWithoutValidation("Cookie", cookie);
+        }
+
+        if (!string.IsNullOrEmpty(userAgent))
+        {
+            request.Headers.TryAddWithoutValidation("User-Agent", userAgent);
         }
 
         var response = await Client.SendAsync(request);

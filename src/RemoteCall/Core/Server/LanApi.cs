@@ -211,12 +211,20 @@ public sealed class LanApi
 
         var deviceId = NormalizeDeviceId(body.DeviceId);
 
+        // 设备没带名字（或还是旧占位名）时，按 User-Agent 猜一个默认设备名
+        var deviceName = body.DeviceName;
+        if (string.IsNullOrWhiteSpace(deviceName) ||
+            string.Equals(deviceName.Trim(), MessageStore.UnnamedDevice, StringComparison.Ordinal))
+        {
+            deviceName = DeviceNameGuesser.FromUserAgent(request.Header("user-agent"));
+        }
+
         if (!_ctx.MessageLimiter.TryAcquire(request.RemoteIp, out var retryAfter))
         {
             throw new ApiException(429, "too_many_messages", $"发送过于频繁，请 {retryAfter} 秒后再试。");
         }
 
-        var view = _ctx.Store.Add(text, deviceId, body.DeviceName, request.RemoteIp);
+        var view = _ctx.Store.Add(text, deviceId, deviceName, request.RemoteIp);
         _ctx.Log($"收到来自 {view.DeviceName}（{view.Ip}）的消息 #{view.Id}");
         return HttpResponse.Json(new { ok = true, message = view }, 201);
     }

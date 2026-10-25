@@ -3,6 +3,8 @@
 
   var DEVICE_ID_KEY = 'remotecall.deviceId';
   var DEVICE_NAME_KEY = 'remotecall.deviceName';
+  // 服务端把空名字记成这个占位名；把它当成"还没设置过名字"
+  var PLACEHOLDER_NAME = '未命名设备';
 
   var listEl = document.getElementById('list');
   var emptyEl = document.getElementById('empty');
@@ -213,27 +215,73 @@
       });
   }
 
+  // ---------- 设备名探测 ----------
+  // 浏览器不提供主机名，只能按 UA 识别设备类型 / Android 机型
+  function detectDeviceName() {
+    var ua = navigator.userAgent || '';
+    var touchPoints = navigator.maxTouchPoints || 0;
+
+    if (/iPhone/.test(ua)) { return 'iPhone'; }
+    if (/iPad/.test(ua) || (/Macintosh/.test(ua) && touchPoints > 1)) { return 'iPad'; }
+    if (/iPod/.test(ua)) { return 'iPod touch'; }
+    if (/Android/i.test(ua)) { return extractAndroidModel(ua) || 'Android 设备'; }
+    if (/CrOS/.test(ua)) { return 'Chromebook'; }
+    if (/Windows/i.test(ua)) { return 'Windows 电脑'; }
+    if (/Macintosh|Mac OS X/i.test(ua)) { return 'Mac'; }
+    if (/Linux/i.test(ua)) { return 'Linux 设备'; }
+    return '浏览器设备';
+  }
+
+  function extractAndroidModel(ua) {
+    var index = ua.indexOf('Android');
+    if (index < 0) { return ''; }
+    var rest = ua.slice(index + 'Android'.length);
+    var semicolon = rest.indexOf(';');
+    if (semicolon < 0) { return ''; }
+
+    var candidate = rest.slice(semicolon + 1);
+    var build = candidate.search(/Build\//i);
+    if (build >= 0) {
+      candidate = candidate.slice(0, build);
+    } else {
+      var close = candidate.indexOf(')');
+      if (close >= 0) { candidate = candidate.slice(0, close); }
+    }
+
+    candidate = candidate.replace(/;\s*$/, '').trim();
+    if (candidate.length < 2 || candidate.length > 40) { return ''; }
+    if (/^Android/i.test(candidate) || /^wv$/i.test(candidate) || /^K$/i.test(candidate)) { return ''; }
+    return candidate;
+  }
+
   // ---------- 启动 ----------
 
   function loadSession() {
     state.deviceId = ensureDeviceId();
-    state.deviceName = readStoredName();
+    var storedName = readStoredName();
+
     return api('/api/session?deviceId=' + encodeURIComponent(state.deviceId)).then(function (data) {
-      if (data.deviceName) {
-        state.deviceName = data.deviceName;
-        storeName(state.deviceName);
+      var serverName = data.deviceName || '';
+      var name;
+
+      if (serverName && serverName !== PLACEHOLDER_NAME) {
+        // 服务器上已经有有效名字（可能是之前改过的），以它为准
+        name = serverName;
+      } else if (storedName && storedName !== PLACEHOLDER_NAME) {
+        name = storedName;
+      } else {
+        // 首次使用：按 UA 探测设备名，而不是「未命名设备」
+        name = detectDeviceName();
       }
-      if (!state.deviceName) {
-        state.deviceName = '未命名设备';
-        storeName(state.deviceName);
-        return renameOnServer(state.deviceName, false).catch(function () { });
-      }
-      if (!data.deviceName) {
-        return renameOnServer(state.deviceName, false).catch(function () { });
+
+      state.deviceName = name;
+      storeName(name);
+      deviceNameEl.textContent = name;
+
+      if (name !== serverName) {
+        return renameOnServer(name, false).catch(function () { });
       }
       return null;
-    }).then(function () {
-      deviceNameEl.textContent = state.deviceName;
     });
   }
 

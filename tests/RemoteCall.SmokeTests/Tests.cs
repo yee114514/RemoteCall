@@ -452,6 +452,66 @@ internal static class Tests
         await Task.CompletedTask;
     }
 
+    public static async Task DeviceNameAsync(TestEnvironment env)
+    {
+        // 纯 UA 解析
+        Assert.Equal("iPhone", DeviceNameGuesser.FromUserAgent(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"));
+        Assert.Equal("iPad", DeviceNameGuesser.FromUserAgent(
+            "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"));
+        Assert.Equal("SM-G991B", DeviceNameGuesser.FromUserAgent(
+            "Mozilla/5.0 (Linux; Android 13; SM-G991B Build/TP1A.220624.014) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"));
+        Assert.Equal("Pixel 7", DeviceNameGuesser.FromUserAgent(
+            "Mozilla/5.0 (Linux; Android 14; Pixel 7 Build/UQ1A.240105.004) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0 Mobile Safari/537.36"));
+        Assert.Equal("Android 设备", DeviceNameGuesser.FromUserAgent(
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"));
+        Assert.Equal("Windows 电脑", DeviceNameGuesser.FromUserAgent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"));
+        Assert.Equal("Linux 设备", DeviceNameGuesser.FromUserAgent("Mozilla/5.0 (X11; Linux x86_64) Firefox/120.0"));
+        Assert.Equal(DeviceNameGuesser.Unknown, DeviceNameGuesser.FromUserAgent(""));
+        Assert.Equal(DeviceNameGuesser.Unknown, DeviceNameGuesser.FromUserAgent(null));
+
+        // 发消息时不带设备名 → 服务端按 UA 命名
+        var androidUa = "Mozilla/5.0 (Linux; Android 13; SM-G991B Build/TP1A.220624.014) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36";
+        var (status, body, _) = await env.LanAsync(
+            "POST",
+            "/api/messages",
+            JsonSerializer.Serialize(new { text = "来自安卓的消息", deviceId = "android-device" }),
+            userAgent: androidUa);
+        Assert.Equal(201, status, "不带设备名的消息应能发送");
+        using (var document = JsonDocument.Parse(body))
+        {
+            Assert.Equal("SM-G991B", document.RootElement.GetProperty("message").GetProperty("deviceName").GetString(),
+                "设备名应从 UA 自动识别");
+        }
+
+        // 显式带的设备名优先
+        (status, body, _) = await env.LanAsync(
+            "POST",
+            "/api/messages",
+            JsonSerializer.Serialize(new { text = "带名字的消息", deviceId = "named-device", deviceName = "我的手机" }),
+            userAgent: androidUa);
+        Assert.Equal(201, status);
+        using (var document = JsonDocument.Parse(body))
+        {
+            Assert.Equal("我的手机", document.RootElement.GetProperty("message").GetProperty("deviceName").GetString(),
+                "显式设备名应保持不变");
+        }
+
+        // 旧占位名「未命名设备」也会被 UA 结果替换
+        (status, body, _) = await env.LanAsync(
+            "POST",
+            "/api/messages",
+            JsonSerializer.Serialize(new { text = "占位名消息", deviceId = "placeholder-device", deviceName = Core.Data.MessageStore.UnnamedDevice }),
+            userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1");
+        Assert.Equal(201, status);
+        using (var document = JsonDocument.Parse(body))
+        {
+            Assert.Equal("iPhone", document.RootElement.GetProperty("message").GetProperty("deviceName").GetString(),
+                "占位名应被 UA 识别结果替换");
+        }
+    }
+
     public static async Task StoreAsync(TestEnvironment env)
     {
         var store = new MessageStore(env.Folder);

@@ -65,6 +65,9 @@ docs/*.png                   验证截图（README 引用）
 9. **端口默认值只在 `CoreDefaults` 定义**；UI、JS、文档都引用/插值，不要写死数字。
 10. 网络相关逻辑必须与"具体网卡/具体 IP"解耦：地址靠 `LanAddresses` 动态枚举（会过滤虚拟网卡），
     不要在代码里假设任何一台机器的 IP。
+11. **设备名的来源分两层**：客户端 `lan/app.js` 的 `detectDeviceName()` 优先（立即显示）；
+    服务端 `DeviceNameGuesser.FromUserAgent()` 兜底（没带名字或名字是 `未命名设备` 时按 UA 猜）。
+    `未命名设备` 一律当作"还没设置过名字"处理，不要把它当有效名字存下来。
 
 ---
 
@@ -87,7 +90,7 @@ docs/*.png                   验证截图（README 引用）
 ## 4. 修改后的标准验证流程
 
 1. `dotnet build RemoteCall.sln -c Release` —— 0 warning / 0 error。
-2. 冒烟测试全绿（当前 19 项）。
+2. 冒烟测试全绿（当前 20 项）。
 3. `pwsh -File scripts\install.ps1 -StopClassIsland`（脚本会先正常关闭、失败则结束进程）。
 4. 启动 ClassIsland，等 ~22s：
    - `data\Logs\*.log` 出现 `此次会话已加载插件: ...,远程消息(remote.call,...)` 与两条"已开始监听"；
@@ -128,13 +131,14 @@ docs/*.png                   验证截图（README 引用）
 | 插件 DLL 被占用 | 安装前必须先关 ClassIsland，否则 `Remove-Item` 失败 |
 | `HttpListener` / ASP.NET Core | 前者非 localhost 前缀需要管理员/urlacl，后者共享框架不在宿主 runtimeconfig ⇒ 只能用 `TcpListener` 自己实现 |
 | 控制台编码 | 中文经 bash/curl 传递容易被 GBK 破坏；验证接口时用 Python(UTF-8) 或写文件再 `--data-binary` |
+| 浏览器拿不到主机名 | 只能按 UA 识别设备类型/Android 机型；UA 里的 `Android 13`、`wv`、`K` 不是机型，必须过滤（见 `DeviceNameGuesser`） |
 
 ---
 
 ## 7. 完成标准（提交前自查）
 
 - [ ] `dotnet build -c Release`：0 warning / 0 error
-- [ ] 冒烟测试 19/19
+- [ ] 冒烟测试 20/20
 - [ ] 插件被宿主加载、两个端口监听、`/api/state` 正常
 - [ ] 若改了界面：截图确认（深色主题可读、无横向溢出、与内置设置页观感一致）
 - [ ] 若改了接口/设置项：同步更新 `README.md` 的接口表、字段说明、限制说明

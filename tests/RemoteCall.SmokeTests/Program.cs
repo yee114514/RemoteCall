@@ -7,6 +7,7 @@ var tests = new (string Name, Func<TestEnvironment, Task> Body)[]
     ("默认密码 admin", Tests.DefaultPasswordAsync),
     ("局域网地址过滤", Tests.LanAddressesAsync),
     ("不限制选项（-1）", Tests.UnlimitedAsync),
+    ("设备名自动识别", Tests.DeviceNameAsync),
     ("静态页面", Tests.StaticPagesAsync),
     ("未登录跳转", Tests.RedirectAsync),
     ("登录与会话", Tests.LoginAsync),
