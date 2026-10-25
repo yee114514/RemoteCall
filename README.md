@@ -27,8 +27,7 @@
 | 本机以组件形式展示 | 「远程消息」主界面组件（`ComponentBase<T>`），读取本地消息存储 |
 | 多条消息轮流展示 | 一屏显示一条（内容垂直居中），**每 5 秒向上滑动切换**到下一条，循环播放；间隔/动画时长/高度可调 |
 | 网页可看历史 + 发送者 IP + 设备名 | 历史列表按 `deviceName`、`ip`、时间、状态展示；筛选「全部 / 未完成 / 已完成」 |
-| 设备名默认自动识别 | 首次访问按 User-Agent 取设备名（`iPhone` / `iPad` / Android 机型如 `SM-G991B`、`Pixel 7` / `Windows 电脑` / `Mac` / `Linux 设备`…），点一下即可改成自己的名字 |
-| 设备名可改且历史同步改名 | 消息只存 `deviceId`，设备名单独存一张表，展示时联查 ⇒ 改名后历史立即更新 |
+| 设备名默认自动识别 | 首次访问按 User-Agent 取设备名（`iPhone` / `iPad` / Android 机型如 `SM-G991B`、`Pixel 7` / `Windows 电脑` / `Mac` / `Linux 设备`…），点一下即可改成自己的名字 || 设备名可改且历史同步改名 | 消息只存 `deviceId`，设备名单独存一张表，展示时联查 ⇒ 改名后历史立即更新 |
 | 设备可标记「完成展示」 | `POST /api/messages/{id}/complete`，本机存储同步标记；组件默认只轮播未完成消息 |
 | 本机 localhost 管理历史与密码 | `http://127.0.0.1:8199/`（只绑定回环地址）：历史增删、设备改名、改密码、改端口 |
 | 历史同时含已完成 / 未完成 | 存储中统一保存，仅用 `completed` 区分；组件是否显示已完成为可选项 |
@@ -166,6 +165,8 @@ New-NetFirewallRule -DisplayName 'ClassIsland RemoteCall' -Direction Inbound `
 - 端口改动时旧连接会断开，需要用新地址重新打开页面。
 - 设备身份依赖浏览器 localStorage 的 UUID：清理浏览器数据会被当成新设备。
 - 浏览器出于隐私**不提供主机名/设备名**，默认设备名是按 User-Agent 推出来的（iOS 只能区分 iPhone/iPad，Android 一般能拿到机型）；想精确区分请点一下改名。
+- 安卓浏览器切到「桌面版网站」后 UA 会变成 `X11; Linux x86_64`（不含 `Android`），这时会结合 `Mobile`/`wv)`、`navigator.platform`（`Linux armv8l`）以及触屏/屏幕宽度来判定为安卓设备。
+- 自动识别的名字会在每次打开页面时按当前 UA 校正；**一旦你手动改过名，就不再被自动覆盖**（`nameSource` 记为 `user`）。设备名识别异常时，管理页「最近日志」里会记录该设备本次的 User-Agent，方便排查。
 - 首次启动的默认密码是 `admin`，为了便于查看会明文保存在 `settings.json` 的 `GeneratedPassword` 里；设置自己的密码后会被清空。
 - 「局域网访问地址」只列出**真实网卡**的地址：VMware / Hyper-V / VirtualBox / Radmin / Tailscale / WSL / Docker 等虚拟网卡会被过滤掉（这些地址手机连不上）。如果一个可用地址都没有，会退回到列出全部候选。
 - 组件默认「一屏一条、每 5 秒上滑切换、最新优先」，均可在组件设置里调整；显示高度不要超过主界面那一行的高度，否则会被裁掉。

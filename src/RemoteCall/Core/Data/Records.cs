@@ -29,6 +29,13 @@ public sealed class DeviceRecord
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+
+    /// <summary>
+    /// 名字来源：<c>auto</c>（按 UA 自动识别，下次访问可被更好的识别结果纠正）
+    /// 或 <c>user</c>（用户手动改过，不再自动覆盖）。
+    /// </summary>
+    public string NameSource { get; set; } = "auto";
+
     public string LastIp { get; set; } = "";
     public DateTimeOffset FirstSeenAt { get; set; }
     public DateTimeOffset LastSeenAt { get; set; }
@@ -59,11 +66,24 @@ public sealed record MessageView(
     DateTimeOffset? CompletedAt);
 
 /// <summary>
+/// 设备名的来源。
+/// </summary>
+public static class DeviceNameSource
+{
+    /// <summary>按 User-Agent 自动识别出来的（下次访问可被更好的识别结果纠正）。</summary>
+    public const string Auto = "auto";
+
+    /// <summary>用户手动改过（不再自动覆盖）。</summary>
+    public const string User = "user";
+}
+
+/// <summary>
 /// 对外的设备视图。
 /// </summary>
 public sealed record DeviceView(
     string Id,
     string Name,
+    string NameSource,
     string LastIp,
     DateTimeOffset FirstSeenAt,
     DateTimeOffset LastSeenAt);

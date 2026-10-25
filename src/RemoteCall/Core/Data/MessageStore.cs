@@ -71,13 +71,13 @@ public sealed class MessageStore
     /// <summary>
     /// 添加一条消息。
     /// </summary>
-    public MessageView Add(string text, string deviceId, string? deviceName, string ip)
+    public MessageView Add(string text, string deviceId, string? deviceName, string ip, string nameSource = DeviceNameSource.Auto)
     {
         MessageView view;
         lock (_sync)
         {
             var now = DateTimeOffset.UtcNow;
-            EnsureDeviceLocked(deviceId, deviceName, ip, now);
+            EnsureDeviceLocked(deviceId, deviceName, ip, now, nameSource);
             var record = new MessageRecord
             {
                 Id = _snapshot.NextMessageId++,
@@ -228,17 +228,23 @@ public sealed class MessageStore
         {
             return _snapshot.Devices
                 .OrderByDescending(d => d.LastSeenAt)
-                .Select(d => new DeviceView(d.Id, DisplayNameOf(d), d.LastIp, d.FirstSeenAt, d.LastSeenAt))
+                .Select(ToDeviceView)
                 .ToList();
         }
     }
 
     /// <summary>
     /// 修改设备名。历史消息不需要改动，展示时按 deviceId 联查当前名字。
+    /// <para><paramref name="nameSource"/> 为 <see cref="DeviceNameSource.User"/> 时视为用户选择，
+    /// 之后不会被 UA 自动识别结果覆盖。</para>
     /// </summary>
-    public bool RenameDevice(string deviceId, string? name)
+    public bool RenameDevice(string deviceId, string? name, string nameSource = DeviceNameSource.User)
     {
         var sanitized = SanitizeDeviceName(name);
+        var source = string.Equals(nameSource, DeviceNameSource.Auto, StringComparison.OrdinalIgnoreCase)
+            ? DeviceNameSource.Auto
+            : DeviceNameSource.User;
+
         lock (_sync)
         {
             var device = _snapshot.Devices.FirstOrDefault(d => d.Id == deviceId);
@@ -247,12 +253,19 @@ public sealed class MessageStore
                 return false;
             }
 
-            if (device.Name == sanitized)
+            // 自动识别不能覆盖用户手动改过的名字
+            if (source == DeviceNameSource.Auto && device.NameSource == DeviceNameSource.User)
+            {
+                return true;
+            }
+
+            if (device.Name == sanitized && device.NameSource == source)
             {
                 return true;
             }
 
             device.Name = sanitized;
+            device.NameSource = source;
             SaveLocked();
             _version++;
         }
@@ -272,19 +285,32 @@ public sealed class MessageStore
 
     /// <summary>
     /// 确保设备存在，并更新它最后出现的 IP/时间与名字。
+    /// <para>名字来源为 Auto 时不会覆盖用户手动改过的名字。</para>
     /// </summary>
-    public DeviceView EnsureDevice(string deviceId, string? name, string ip)
+    public DeviceView EnsureDevice(string deviceId, string? name, string ip, string nameSource = DeviceNameSource.Auto)
     {
         DeviceView view;
         lock (_sync)
         {
-            var device = EnsureDeviceLocked(deviceId, name, ip, DateTimeOffset.UtcNow);
+            var device = EnsureDeviceLocked(deviceId, name, ip, DateTimeOffset.UtcNow, nameSource);
             SaveLocked();
-            view = new DeviceView(device.Id, DisplayNameOf(device), device.LastIp, device.FirstSeenAt, device.LastSeenAt);
+            view = ToDeviceView(device);
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
         return view;
+    }
+
+    /// <summary>
+    /// 查一个设备（不存在返回 null）。
+    /// </summary>
+    public DeviceView? GetDevice(string deviceId)
+    {
+        lock (_sync)
+        {
+            var device = _snapshot.Devices.FirstOrDefault(d => d.Id == deviceId);
+            return device == null ? null : ToDeviceView(device);
+        }
     }
 
     /// <summary>
@@ -318,15 +344,21 @@ public sealed class MessageStore
         return filtered.Length <= MaxDeviceNameLength ? filtered : filtered[..MaxDeviceNameLength];
     }
 
-    private DeviceRecord EnsureDeviceLocked(string deviceId, string? name, string ip, DateTimeOffset now)
+    private DeviceRecord EnsureDeviceLocked(string deviceId, string? name, string ip, DateTimeOffset now, string nameSource = DeviceNameSource.Auto)
     {
+        var source = string.Equals(nameSource, DeviceNameSource.Auto, StringComparison.OrdinalIgnoreCase)
+            ? DeviceNameSource.Auto
+            : DeviceNameSource.User;
+        var sanitized = SanitizeDeviceName(name);
+
         var device = _snapshot.Devices.FirstOrDefault(d => d.Id == deviceId);
         if (device == null)
         {
             device = new DeviceRecord
             {
                 Id = deviceId,
-                Name = SanitizeDeviceName(name),
+                Name = sanitized,
+                NameSource = source,
                 LastIp = ip,
                 FirstSeenAt = now,
                 LastSeenAt = now,
@@ -337,16 +369,32 @@ public sealed class MessageStore
 
         device.LastIp = ip;
         device.LastSeenAt = now;
-        if (!string.IsNullOrWhiteSpace(name))
+
+        if (sanitized == UnnamedDevice)
         {
-            var sanitized = SanitizeDeviceName(name);
-            if (sanitized != UnnamedDevice && device.Name != sanitized)
-            {
-                device.Name = sanitized;
-            }
+            return device;
         }
 
+        if (source == DeviceNameSource.Auto && device.NameSource == DeviceNameSource.User)
+        {
+            // 用户改过的名字，不被自动识别覆盖
+            return device;
+        }
+
+        device.Name = sanitized;
+        device.NameSource = source;
         return device;
+    }
+
+    private static DeviceView ToDeviceView(DeviceRecord device)
+    {
+        return new DeviceView(
+            device.Id,
+            DisplayNameOf(device),
+            string.IsNullOrEmpty(device.NameSource) ? DeviceNameSource.Auto : device.NameSource,
+            device.LastIp,
+            device.FirstSeenAt,
+            device.LastSeenAt);
     }
 
     private bool TrimLocked()

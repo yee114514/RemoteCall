@@ -23,6 +23,7 @@
     total: -1,
     deviceId: '',
     deviceName: '',
+    nameSource: 'auto',
     polling: false,
     booted: false,
     toastTimer: 0
@@ -168,13 +169,14 @@
     });
   }
 
-  function renameOnServer(name, notify) {
+  function renameOnServer(name, source, notify) {
     return api('/api/devices/' + encodeURIComponent(state.deviceId), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name, requesterId: state.deviceId })
+      body: JSON.stringify({ name: name, requesterId: state.deviceId, nameSource: source })
     }).then(function (data) {
       state.deviceName = (data.device && data.device.name) || name;
+      state.nameSource = (data.device && data.device.nameSource) || source;
       storeName(state.deviceName);
       deviceNameEl.textContent = state.deviceName;
       if (notify) {
@@ -193,7 +195,7 @@
       toast('设备名不能为空');
       return;
     }
-    renameOnServer(name, true).catch(function (error) { toast(error.message); });
+    renameOnServer(name, 'user', true).catch(function (error) { toast(error.message); });
   }
 
   function poll(force) {
@@ -216,19 +218,30 @@
   }
 
   // ---------- 设备名探测 ----------
-  // 浏览器不提供主机名，只能按 UA 识别设备类型 / Android 机型
+  // 浏览器不提供主机名，只能按 UA / platform 识别设备类型与 Android 机型
   function detectDeviceName() {
     var ua = navigator.userAgent || '';
+    var platform = navigator.platform || '';
     var touchPoints = navigator.maxTouchPoints || 0;
+    var screenWidth = (window.screen && window.screen.width) || 0;
 
     if (/iPhone/.test(ua)) { return 'iPhone'; }
     if (/iPad/.test(ua) || (/Macintosh/.test(ua) && touchPoints > 1)) { return 'iPad'; }
     if (/iPod/.test(ua)) { return 'iPod touch'; }
     if (/Android/i.test(ua)) { return extractAndroidModel(ua) || 'Android 设备'; }
+
+    // 安卓浏览器切到「桌面版网站」后 UA 会变成 X11; Linux（没有 Android 字样），
+    // 用 Mobile/wv) 以及 platform=Linux arm* 兜底判成安卓而不是 Linux 桌面
+    if (/Linux/i.test(ua) && (/Mobile/i.test(ua) || /wv\)/i.test(ua))) { return 'Android 设备'; }
+    if (/^Linux/i.test(platform) && /arm|aarch/i.test(platform)) { return 'Android 设备'; }
+
     if (/CrOS/.test(ua)) { return 'Chromebook'; }
     if (/Windows/i.test(ua)) { return 'Windows 电脑'; }
     if (/Macintosh|Mac OS X/i.test(ua)) { return 'Mac'; }
-    if (/Linux/i.test(ua)) { return 'Linux 设备'; }
+    if (/Linux/i.test(ua)) {
+      // 触屏 + 窄屏的「Linux」多半是安卓桌面模式
+      return touchPoints > 0 && screenWidth > 0 && screenWidth <= 900 ? 'Android 设备' : 'Linux 设备';
+    }
     return '浏览器设备';
   }
 
@@ -248,38 +261,62 @@
       if (close >= 0) { candidate = candidate.slice(0, close); }
     }
 
-    candidate = candidate.replace(/;\s*$/, '').trim();
-    if (candidate.length < 2 || candidate.length > 40) { return ''; }
-    if (/^Android/i.test(candidate) || /^wv$/i.test(candidate) || /^K$/i.test(candidate)) { return ''; }
-    return candidate;
+    // "zh-cn; MI 8" 这种，取最后一个像机型的片段
+    var segments = candidate.split(';');
+    var chosen = '';
+    for (var i = 0; i < segments.length; i++) {
+      var segment = segments[i].replace(/;\s*$/, '').trim();
+      if (looksLikeModel(segment)) { chosen = segment; }
+    }
+
+    return looksLikeModel(chosen) ? chosen : '';
+  }
+
+  function looksLikeModel(text) {
+    if (!text || text.length < 2 || text.length > 40) { return false; }
+    if (/^Android/i.test(text) || /^wv$/i.test(text) || /^K$/i.test(text) || /^U$/i.test(text)) { return false; }
+    if (/^\d+$/.test(text)) { return false; }
+    if (text.length <= 6 && /^[A-Za-z]{2}-[A-Za-z]{2,4}$/.test(text)) { return false; }
+    return true;
   }
 
   // ---------- 启动 ----------
 
   function loadSession() {
     state.deviceId = ensureDeviceId();
-    var storedName = readStoredName();
+    // 这些名字等于"没识别出来"，不要拿它们覆盖已知的名字
+    var genericNames = ['浏览器设备', '未知设备', PLACEHOLDER_NAME];
 
     return api('/api/session?deviceId=' + encodeURIComponent(state.deviceId)).then(function (data) {
       var serverName = data.deviceName || '';
+      var serverSource = data.nameSource || '';
       var name;
+      var source;
 
-      if (serverName && serverName !== PLACEHOLDER_NAME) {
-        // 服务器上已经有有效名字（可能是之前改过的），以它为准
+      if (serverSource === 'user' && serverName) {
+        // 用户手动改过，以服务端为准，不再自动覆盖
         name = serverName;
-      } else if (storedName && storedName !== PLACEHOLDER_NAME) {
-        name = storedName;
+        source = 'user';
       } else {
-        // 首次使用：按 UA 探测设备名，而不是「未命名设备」
-        name = detectDeviceName();
+        // 服务端是自动名（或还没有记录）：用浏览器本地更精细的探测结果
+        var detected = detectDeviceName();
+        if (genericNames.indexOf(detected) >= 0) {
+          // 本地探测不出具体设备：优先用服务端/本地记得的具体名字
+          var fallback = serverName && genericNames.indexOf(serverName) < 0 ? serverName : readStoredName();
+          name = fallback && genericNames.indexOf(fallback) < 0 ? fallback : detected;
+        } else {
+          name = detected;
+        }
+        source = 'auto';
       }
 
       state.deviceName = name;
+      state.nameSource = source;
       storeName(name);
       deviceNameEl.textContent = name;
 
-      if (name !== serverName) {
-        return renameOnServer(name, false).catch(function () { });
+      if (name !== serverName || source !== serverSource) {
+        return renameOnServer(name, source, false).catch(function () { });
       }
       return null;
     });
@@ -302,7 +339,7 @@
       api('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text, deviceId: state.deviceId, deviceName: state.deviceName })
+        body: JSON.stringify({ text: text, deviceId: state.deviceId, deviceName: state.deviceName, nameSource: state.nameSource })
       }).then(function () {
         textArea.value = '';
         toast('已发送到本机');

@@ -13,6 +13,9 @@ public sealed class SendMessageRequest
     public string? Text { get; set; }
     public string? DeviceId { get; set; }
     public string? DeviceName { get; set; }
+
+    /// <summary>设备名来源：<c>auto</c>（UA 识别，可被纠正）或 <c>user</c>（用户手动设置）。</summary>
+    public string? NameSource { get; set; }
 }
 
 public sealed class CompleteRequest
@@ -24,6 +27,9 @@ public sealed class RenameDeviceRequest
 {
     public string? Name { get; set; }
     public string? RequesterId { get; set; }
+
+    /// <summary>设备名来源：<c>auto</c>（UA 识别）或 <c>user</c>（用户手动设置，默认）。</summary>
+    public string? NameSource { get; set; }
 }
 
 public sealed class ClearRequest

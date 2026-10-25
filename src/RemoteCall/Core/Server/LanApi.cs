@@ -156,10 +156,27 @@ public sealed class LanApi
         var session = Authenticate(request);
         var deviceId = request.QueryValue("deviceId");
         string? deviceName = null;
+        string? nameSource = null;
+
         if (!string.IsNullOrWhiteSpace(deviceId))
         {
-            var device = _ctx.Store.Devices().FirstOrDefault(d => d.Id == deviceId);
-            deviceName = device?.Name;
+            var previous = _ctx.Store.GetDevice(deviceId);
+            var userAgent = request.Header("user-agent");
+            // 每次进入页面都按当前 UA 校正一次"自动命名"，用户手动改过的名字不会被覆盖
+            var guessed = DeviceNameGuesser.FromUserAgent(userAgent);
+            var device = _ctx.Store.EnsureDevice(deviceId, guessed, request.RemoteIp);
+            deviceName = device.Name;
+            nameSource = device.NameSource;
+
+            if (previous == null || previous.Name != device.Name)
+            {
+                _ctx.Log($"设备 {deviceId} 自动识别为「{device.Name}」（UA: {Truncate(userAgent, 160)}）");
+            }
+            else
+            {
+                // 每次进入页面都记一条 UA，方便排查「为什么识别成 xxx」
+                _ctx.Log($"设备 {deviceId[..Math.Min(8, deviceId.Length)]}（{request.RemoteIp}）UA: {Truncate(userAgent, 140)}");
+            }
         }
 
         return HttpResponse.Json(new
@@ -171,10 +188,21 @@ public sealed class LanApi
             pluginVersion = _ctx.PluginVersion,
             expiresAt = session.ExpiresAt,
             deviceName,
+            nameSource,
             messageCount = _ctx.Store.Count,
             pendingCount = _ctx.Store.PendingCount,
             version = _ctx.Store.Version,
         });
+    }
+
+    private static string Truncate(string? text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return "(空)";
+        }
+
+        return text.Length <= maxLength ? text : text[..maxLength] + "…";
     }
 
     private HttpResponse ListMessages(HttpRequest request)
@@ -213,10 +241,14 @@ public sealed class LanApi
 
         // 设备没带名字（或还是旧占位名）时，按 User-Agent 猜一个默认设备名
         var deviceName = body.DeviceName;
+        var nameSource = string.Equals(body.NameSource, DeviceNameSource.Auto, StringComparison.OrdinalIgnoreCase)
+            ? DeviceNameSource.Auto
+            : DeviceNameSource.User;
         if (string.IsNullOrWhiteSpace(deviceName) ||
             string.Equals(deviceName.Trim(), MessageStore.UnnamedDevice, StringComparison.Ordinal))
         {
             deviceName = DeviceNameGuesser.FromUserAgent(request.Header("user-agent"));
+            nameSource = DeviceNameSource.Auto;
         }
 
         if (!_ctx.MessageLimiter.TryAcquire(request.RemoteIp, out var retryAfter))
@@ -224,7 +256,7 @@ public sealed class LanApi
             throw new ApiException(429, "too_many_messages", $"发送过于频繁，请 {retryAfter} 秒后再试。");
         }
 
-        var view = _ctx.Store.Add(text, deviceId, deviceName, request.RemoteIp);
+        var view = _ctx.Store.Add(text, deviceId, deviceName, request.RemoteIp, nameSource);
         _ctx.Log($"收到来自 {view.DeviceName}（{view.Ip}）的消息 #{view.Id}");
         return HttpResponse.Json(new { ok = true, message = view }, 201);
     }
@@ -261,14 +293,18 @@ public sealed class LanApi
             throw ApiException.BadRequest("设备名不能为空。", "empty_name");
         }
 
-        if (!_ctx.Store.RenameDevice(deviceId, name))
+        var nameSource = string.Equals(body.NameSource, DeviceNameSource.Auto, StringComparison.OrdinalIgnoreCase)
+            ? DeviceNameSource.Auto
+            : DeviceNameSource.User;
+
+        if (!_ctx.Store.RenameDevice(deviceId, name, nameSource))
         {
             // 设备还没发过消息时，允许先建立一条设备记录
-            _ctx.Store.EnsureDevice(deviceId, name, request.RemoteIp);
+            _ctx.Store.EnsureDevice(deviceId, name, request.RemoteIp, nameSource);
         }
 
-        var device = _ctx.Store.Devices().FirstOrDefault(d => d.Id == deviceId);
-        _ctx.Log($"设备已改名为「{device?.Name}」");
+        var device = _ctx.Store.GetDevice(deviceId);
+        _ctx.Log($"设备名已设为「{device?.Name}」（{nameSource}）");
         return HttpResponse.Json(new { ok = true, device });
     }
 

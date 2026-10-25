@@ -46,6 +46,16 @@ public static class DeviceNameGuesser
             return model ?? AndroidDevice;
         }
 
+        // 安卓浏览器切到「桌面版网站」后 UA 会变成 X11; Linux，里面没有 Android 字样；
+        // 这类 UA 通常仍带 Mobile 或 wv)（WebView），据此判定为安卓而不是 Linux 桌面。
+        if (ua.Contains("Linux", StringComparison.OrdinalIgnoreCase) &&
+            (ua.Contains("Mobile", StringComparison.OrdinalIgnoreCase) ||
+             ua.Contains("wv)", StringComparison.OrdinalIgnoreCase) ||
+             ua.Contains("; U;", StringComparison.OrdinalIgnoreCase)))
+        {
+            return AndroidDevice;
+        }
+
         if (ua.Contains("CrOS", StringComparison.OrdinalIgnoreCase))
         {
             return "Chromebook";
@@ -107,16 +117,40 @@ public static class DeviceNameGuesser
 
         candidate = candidate.Trim().TrimEnd(';').Trim();
 
-        // 过滤掉 "Android 13"、"wv"、"K" 这类不是机型的内容
-        if (candidate.Length < 2 ||
-            candidate.Length > 40 ||
-            candidate.StartsWith("Android", StringComparison.OrdinalIgnoreCase) ||
-            candidate.Equals("wv", StringComparison.OrdinalIgnoreCase) ||
-            candidate.Equals("K", StringComparison.OrdinalIgnoreCase))
+        // "zh-cn; MI 8" 这种，取最后一个像机型的片段
+        var segments = candidate.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var chosen = segments.LastOrDefault(LooksLikeModel) ?? candidate;
+
+        return LooksLikeModel(chosen) ? chosen : null;
+    }
+
+    private static bool LooksLikeModel(string text)
+    {
+        if (text.Length < 2 || text.Length > 40)
         {
-            return null;
+            return false;
         }
 
-        return candidate;
+        if (text.StartsWith("Android", StringComparison.OrdinalIgnoreCase) ||
+            text.Equals("wv", StringComparison.OrdinalIgnoreCase) ||
+            text.Equals("K", StringComparison.OrdinalIgnoreCase) ||
+            text.Equals("U", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // 语言区域（zh-cn / en-US）、纯数字都不算机型
+        if (text.All(char.IsDigit))
+        {
+            return false;
+        }
+
+        if (text.Length <= 6 && text.Contains('-') &&
+            char.IsLetter(text[0]) && char.IsLetter(text[1]))
+        {
+            return false;
+        }
+
+        return true;
     }
 }

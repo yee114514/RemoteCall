@@ -468,6 +468,15 @@ internal static class Tests
         Assert.Equal("Windows 电脑", DeviceNameGuesser.FromUserAgent(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"));
         Assert.Equal("Linux 设备", DeviceNameGuesser.FromUserAgent("Mozilla/5.0 (X11; Linux x86_64) Firefox/120.0"));
+        // 安卓浏览器切到「桌面版网站」：UA 变成 X11; Linux，仍有 Mobile
+        Assert.Equal("Android 设备", DeviceNameGuesser.FromUserAgent(
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Mobile"));
+        // 老式国产浏览器 UA：Linux; U; Android 9; zh-cn; MI 8 Build/...
+        Assert.Equal("MI 8", DeviceNameGuesser.FromUserAgent(
+            "Mozilla/5.0 (Linux; U; Android 9; zh-cn; MI 8 Build/PKQ1.180729.001) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/70.0 Mobile Safari/537.36"));
+        // 应用内 WebView
+        Assert.Equal("Android 设备", DeviceNameGuesser.FromUserAgent(
+            "Mozilla/5.0 (Linux; Android 13; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0 Mobile Safari/537.36"));
         Assert.Equal(DeviceNameGuesser.Unknown, DeviceNameGuesser.FromUserAgent(""));
         Assert.Equal(DeviceNameGuesser.Unknown, DeviceNameGuesser.FromUserAgent(null));
 
@@ -509,6 +518,45 @@ internal static class Tests
         {
             Assert.Equal("iPhone", document.RootElement.GetProperty("message").GetProperty("deviceName").GetString(),
                 "占位名应被 UA 识别结果替换");
+        }
+    }
+
+    public static async Task DeviceNameSourceAsync(TestEnvironment env)
+    {
+        var folder = Path.Combine(env.Folder, "device-name-source");
+        Directory.CreateDirectory(folder);
+        var store = new MessageStore(folder);
+
+        // 自动识别 → 用户改名 → 自动识别不能再覆盖
+        var created = store.EnsureDevice("dev-1", "iPhone", "10.0.0.1");
+        Assert.Equal(DeviceNameSource.Auto, created.NameSource, "默认来源应为 auto");
+
+        store.RenameDevice("dev-1", "我的手机");
+        var renamed = store.GetDevice("dev-1");
+        Assert.Equal("我的手机", renamed!.Name, "用户改名应生效");
+        Assert.Equal(DeviceNameSource.User, renamed.NameSource, "用户改名来源应为 user");
+
+        store.EnsureDevice("dev-1", "SM-G991B", "10.0.0.1");
+        Assert.Equal("我的手机", store.GetDevice("dev-1")!.Name, "自动识别不应覆盖用户改的名字");
+
+        store.RenameDevice("dev-1", "Python 脚本", DeviceNameSource.Auto);
+        Assert.Equal("我的手机", store.GetDevice("dev-1")!.Name, "auto 来源的改名也不应覆盖用户选择");
+
+        // 自动名可以被更好的识别结果纠正
+        store.EnsureDevice("dev-2", "Linux 设备", "10.0.0.2");
+        store.EnsureDevice("dev-2", "Android 设备", "10.0.0.2");
+        var corrected = store.GetDevice("dev-2");
+        Assert.Equal("Android 设备", corrected!.Name, "自动名应可被纠正");
+        Assert.Equal(DeviceNameSource.Auto, corrected.NameSource);
+
+        // 会话接口要带回 nameSource
+        var ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1";
+        var (status, body, _) = await env.LanAsync("GET", "/api/session?deviceId=session-probe", userAgent: ua);
+        Assert.Equal(200, status);
+        using (var document = JsonDocument.Parse(body))
+        {
+            Assert.Equal("iPhone", document.RootElement.GetProperty("deviceName").GetString(), "会话应返回自动识别的设备名");
+            Assert.Equal(DeviceNameSource.Auto, document.RootElement.GetProperty("nameSource").GetString(), "会话应返回名字来源");
         }
     }
 
